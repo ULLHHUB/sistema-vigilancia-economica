@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilancia Económica Pro</title>
+    <!-- Bootstrap 5 & FontAwesome -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #4361ee;
+            --secondary-color: #3f37c9;
+            --success-color: #4cc9f0;
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #2b2d42;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-color);
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+        }
+
+        .navbar-brand {
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+            background-color: var(--card-bg);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background-color: transparent;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            font-weight: 600;
+            padding: 1.2rem;
+        }
+
+        .status-badge {
+            font-size: 0.85rem;
+            padding: 0.5em 1em;
+            border-radius: 50px;
+        }
+
+        .btn-control {
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-control:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .table-custom thead th {
+            background-color: #f1f3f5;
+            color: #495057;
+            font-weight: 600;
+            border: none;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.5px;
+        }
+
+        .table-custom tbody td {
+            vertical-align: middle;
+            padding: 1rem;
+            border-bottom: 1px solid #f1f3f5;
+        }
+
+        .crypto-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: #e9ecef;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            color: var(--primary-color);
+        }
+
+        #logArea {
+            height: 250px;
+            overflow-y: auto;
+            background-color: #1e1e2e;
+            color: #a6accd;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9rem;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #303040;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-left: 3px solid transparent;
+            padding-left: 8px;
+        }
+        
+        .log-entry.info { border-left-color: #4cc9f0; }
+        .log-entry.success { border-left-color: #4361ee; }
+        .log-entry.warning { border-left-color: #f72585; }
+
+        /* Animación de actualización */
+        @keyframes flash {
+            0% { background-color: rgba(67, 97, 238, 0.1); }
+            100% { background-color: transparent; }
+        }
+        .updated {
+            animation: flash 1s ease-out;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line me-2"></i> Vigilancia Económica <span class="badge bg-white text-primary ms-2" style="font-size: 0.7em;">PRO</span>
+            </a>
+            <div class="d-flex align-items-center text-white">
+                <span class="me-2">Estado:</span>
+                <span id="statusBadge" class="badge bg-secondary status-badge">
+                    <i class="fas fa-stop-circle me-1"></i> Detenido
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <!-- Panel de Control y Cartera -->
+        <div class="row mb-4">
+            <div class="col-lg-8">
+                <div class="card h-100">
+                    <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+                        <div class="d-flex gap-2">
+                            <button id="btnIniciar" class="btn btn-primary btn-control" onclick="iniciar()">
+                                <i class="fas fa-play me-2"></i> Iniciar
+                            </button>
+                            <button id="btnDetener" class="btn btn-danger btn-control" onclick="detener()" disabled>
+                                <i class="fas fa-stop me-2"></i> Detener
+                            </button>
+                        </div>
+
+                        <div class="d-flex align-items-center bg-light p-2 rounded-3 border">
+                            <i class="fas fa-coins text-muted me-2 ms-2"></i>
+                            <label for="moneda" class="fw-bold me-2 text-secondary">Moneda Base:</label>
+                            <select id="moneda" class="form-select form-select-sm border-0 bg-transparent fw-bold text-primary" style="width: auto; cursor: pointer;" onchange="cambiarMoneda()">
+                                <option value="USD">USD (Dólar Americano)</option>
+                                <option value="EUR">EUR (Euro)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tarjeta de Valor de Cartera -->
+            <div class="col-lg-4">
+                <div class="card h-100 bg-primary text-white">
+                    <div class="card-body d-flex flex-column justify-content-center align-items-center">
+                        <h6 class="text-uppercase opacity-75 mb-2" style="letter-spacing: 1px;">Valor Total Cartera</h6>
+                        <div class="d-flex align-items-baseline">
+                            <span class="fs-2 fw-bold" id="portfolioValue">0.00</span>
+                            <span class="ms-2 opacity-75" id="portfolioCurrency">USD</span>
+                        </div>
+                        <small class="opacity-50 mt-1"><i class="fas fa-wallet me-1"></i> Calculado en tiempo real</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Gráfico de Tendencia -->
+            <div class="col-12 mb-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-chart-area me-2 text-primary"></i> Tendencia en Vivo: <span id="chartTitle" class="fw-bold">Bitcoin (BTC)</span></span>
+                        <small class="text-muted">Haga clic en una fila de la tabla para cambiar el activo</small>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="marketChart" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Tabla de Cotizaciones -->
+            <div class="col-lg-8 mb-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-table me-2 text-primary"></i> Mercado en Tiempo Real</span>
+                        <span class="badge bg-light text-dark border"><i class="fas fa-clock me-1"></i> Live</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-custom table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Activo</th>
+                                        <th class="text-end">Precio</th>
+                                        <th class="text-center">Moneda</th>
+                                        <th class="text-end" style="width: 15%;">Tenencia</th>
+                                        <th class="text-end">Valor Total</th>
+                                        <th class="text-end">Hora</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaCuerpo">
+                                    <!-- Filas dinámicas -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="emptyState" class="text-center p-5 text-muted">
+                            <i class="fas fa-satellite-dish fa-3x mb-3 opacity-25"></i>
+                            <p>Esperando datos del mercado...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log de Eventos -->
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <i class="fas fa-terminal me-2 text-secondary"></i> Registro de Sistema
+                    </div>
+                    <div class="card-body p-2 bg-dark rounded-bottom">
+                        <div id="logArea">
+                            <div class="log-entry info">[System] Interfaz lista.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="liveToast" class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body" id="toastBody">
+                    Alerta de Volatilidad
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let chartInstance = null;
+        let currentAsset = "Bitcoin (BTC)";
+        const historyData = {}; // Almacena arrays de precios por activo
+        const MAX_HISTORY = 50; // Puntos máximos en el gráfico
+
+        // Inicializar Gráfico
+        function initChart() {
+            const ctx = document.getElementById('marketChart').getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Precio',
+                        data: [],
+                        borderColor: '#4361ee',
+                        backgroundColor: 'rgba(67, 97, 238, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            grid: { color: '#f1f3f5' },
+                            ticks: { callback: function(value) { return value.toLocaleString(); } }
+                        }
+                    },
+                    animation: { duration: 0 } // Desactivar animación para updates rápidos
+                }
+            });
+        }
+
+        function updateChartData(assetName, price, time) {
+            // Inicializar historial si no existe
+            if (!historyData[assetName]) historyData[assetName] = { labels: [], data: [] };
+            
+            const assetHist = historyData[assetName];
+            assetHist.labels.push(time);
+            assetHist.data.push(price);
+
+            // Limitar historial
+            if (assetHist.labels.length > MAX_HISTORY) {
+                assetHist.labels.shift();
+                assetHist.data.shift();
+            }
+
+            // Si es el activo seleccionado, actualizar gráfico visualmente
+            if (assetName === currentAsset) {
+                chartInstance.data.labels = assetHist.labels;
+                chartInstance.data.datasets[0].data = assetHist.data;
+                chartInstance.data.datasets[0].label = assetName;
+                document.getElementById('chartTitle').innerText = assetName;
+                chartInstance.update();
+            }
+        }
+
+        function selectAsset(assetName) {
+            currentAsset = assetName;
+            // Forzar repintado con datos existentes
+            if (historyData[assetName]) {
+                chartInstance.data.labels = historyData[assetName].labels;
+                chartInstance.data.datasets[0].data = historyData[assetName].data;
+                chartInstance.update();
+                document.getElementById('chartTitle').innerText = assetName;
+            }
+        }
+
+        function connect() {
+            initChart(); // Iniciar gráfico vacío
+            const socket = new SockJS('/ws-vigilancia');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null; 
+            stompClient.connect({}, function (frame) {
+                log("Conexión WebSocket establecida.", "success");
+                stompClient.subscribe('/topic/precios', function (mensaje) {
+                    const evento = JSON.parse(mensaje.body);
+                    actualizarTabla(evento);
+                });
+            }, function(error) {
+                log("Error de conexión WebSocket: " + error, "warning");
+            });
+        }
+
+        function actualizarTabla(evento) {
+            document.getElementById('emptyState').style.display = 'none';
+            const tbody = document.getElementById('tablaCuerpo');
+            const rowId = `row-${evento.nombreActivo.replace(/[^a-zA-Z0-9]/g, '-')}`;
+            let fila = document.getElementById(rowId);
+
+            if (!fila) {
+                fila = document.createElement('tr');
+                fila.id = rowId;
+                
+                // Icono basado en el nombre (simple heurística)
+                let iconClass = "fas fa-chart-pie";
+                if(evento.nombreActivo.includes("Bitcoin")) iconClass = "fab fa-bitcoin";
+                else if(evento.nombreActivo.includes("Ethereum")) iconClass = "fab fa-ethereum";
+                else if(evento.nombreActivo.includes("BCE")) iconClass = "fas fa-university";
+                else if(evento.nombreActivo.includes("Forex")) iconClass = "fas fa-exchange-alt";
+                else if(evento.nombreActivo.includes("Litecoin")) iconClass = "fas fa-bolt"; // Icono para LTC
+                else if(evento.nombreActivo.includes("Ripple")) iconClass = "fas fa-water"; // Icono para XRP
+
+                // Recuperar cantidad guardada
+                const savedQty = localStorage.getItem(`qty-${evento.nombreActivo}`) || 0;
+
+                // Determinar si es Cripto (para habilitar cartera)
+                // Asumimos que si no es Forex ni BCE, es Cripto
+                const isCrypto = !evento.nombreActivo.includes("Forex") && !evento.nombreActivo.includes("BCE");
+
+                const inputHtml = isCrypto ? 
+                    `<input type="number" class="form-control form-control-sm text-end qty-input" 
+                               value="${savedQty}" min="0" step="0.01" 
+                               onchange="saveQuantity('${evento.nombreActivo}', this.value)"
+                               onclick="event.stopPropagation()">` : 
+                    '<span class="text-muted opacity-25">-</span>';
+
+                const totalHtml = isCrypto ? 
+                    `<span class="fw-bold font-monospace text-primary total-val" data-total="0">0.00</span>` : 
+                    '<span class="text-muted opacity-25">-</span>';
+
+                fila.innerHTML = `
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="crypto-icon"><i class="${iconClass}"></i></div>
+                            <span class="fw-bold">${evento.nombreActivo}</span>
+                        </div>
+                    </td>
+                    <td class="text-end fw-bold font-monospace fs-5 valor">--</td>
+                    <td class="text-center"><span class="badge bg-light text-dark border unidad">--</span></td>
+                    <td class="text-end">
+                        ${inputHtml}
+                    </td>
+                    <td class="text-end">
+                        ${totalHtml}
+                    </td>
+                    <td class="text-end text-muted small fecha">--</td>
+                `;
+                // Evento click para cambiar gráfico
+                fila.style.cursor = 'pointer';
+                fila.onclick = (e) => {
+                    // Evitar seleccionar si se hace click en el input
+                    if (e.target.tagName !== 'INPUT') selectAsset(evento.nombreActivo);
+                };
+                fila.setAttribute('data-asset', evento.nombreActivo); // Para ordenar
+                tbody.appendChild(fila);
+                
+                // Ordenar tabla alfabéticamente para evitar saltos
+                sortTable();
+            }
+
+            // Actualizar datos
+            const valorElem = fila.querySelector('.valor');
+            const oldVal = parseFloat(valorElem.getAttribute('data-val') || 0);
+            const newVal = evento.valor;
+
+            // Detectar Volatilidad (Simulada > 0.5% cambio)
+            if (oldVal > 0) {
+                const change = Math.abs((newVal - oldVal) / oldVal);
+                if (change > 0.005) { // 0.5% umbral
+                    showToast(`Alta volatilidad en ${evento.nombreActivo}: ${(change*100).toFixed(2)}%`, "warning");
+                }
+            }
+
+            // Actualizar Gráfico
+            updateChartData(evento.nombreActivo, newVal, new Date(evento.timestamp).toLocaleTimeString());
+
+            // Color de tendencia
+            if(newVal > oldVal) valorElem.className = "text-end fw-bold font-monospace fs-5 valor text-success";
+            else if(newVal < oldVal) valorElem.className = "text-end fw-bold font-monospace fs-5 valor text-danger";
+            
+            valorElem.setAttribute('data-val', newVal);
+            valorElem.innerText = newVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+            
+            fila.querySelector('.unidad').innerText = evento.unidad;
+            fila.querySelector('.fecha').innerText = new Date(evento.timestamp).toLocaleTimeString();
+
+            // Actualizar Valor Total de la Fila
+            updateRowTotal(fila, newVal);
+
+            // Animación
+            fila.classList.remove('updated');
+            void fila.offsetWidth; // trigger reflow
+            fila.classList.add('updated');
+        }
+
+        function saveQuantity(assetName, qty) {
+            localStorage.setItem(`qty-${assetName}`, qty);
+            // Forzar actualización de totales
+            const row = document.querySelector(`tr[data-asset="${assetName}"]`);
+            if(row) {
+                const price = parseFloat(row.querySelector('.valor').getAttribute('data-val') || 0);
+                updateRowTotal(row, price);
+            }
+        }
+
+        function updateRowTotal(row, price) {
+            const qtyInput = row.querySelector('.qty-input');
+            if (!qtyInput) return; // Salir si no es un activo editable (Forex/BCE)
+
+            const qty = parseFloat(qtyInput.value) || 0;
+            const total = price * qty;
+            
+            const totalElem = row.querySelector('.total-val');
+            if (totalElem) {
+                totalElem.innerText = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                totalElem.setAttribute('data-total', total);
+            }
+
+            updatePortfolioTotal();
+        }
+
+        function updatePortfolioTotal() {
+            const totals = document.querySelectorAll('.total-val');
+            let grandTotal = 0;
+            let currency = "USD"; // Default
+
+            totals.forEach(el => {
+                grandTotal += parseFloat(el.getAttribute('data-total') || 0);
+            });
+
+            // Intentar adivinar la moneda del primer elemento
+            const firstUnit = document.querySelector('.unidad');
+            if(firstUnit) currency = firstUnit.innerText;
+
+            document.getElementById('portfolioValue').innerText = grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            document.getElementById('portfolioCurrency').innerText = currency;
+        }
+
+        function sortTable() {
+            const tbody = document.getElementById('tablaCuerpo');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                const nameA = a.getAttribute('data-asset') || "";
+                const nameB = b.getAttribute('data-asset') || "";
+                // Priorizar Forex/BCE al principio si se desea, o simplemente alfabético
+                // Aquí usamos alfabético simple
+                return nameA.localeCompare(nameB);
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        function log(mensaje, tipo = "info") {
+            const logArea = document.getElementById('logArea');
+            const linea = document.createElement('div');
+            linea.className = `log-entry ${tipo}`;
+            linea.innerHTML = `<span class="opacity-50">[${new Date().toLocaleTimeString()}]</span> ${mensaje}`;
+            logArea.appendChild(linea);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function showToast(message, type="info") {
+            const toastEl = document.getElementById('liveToast');
+            const toastBody = document.getElementById('toastBody');
+            toastBody.innerText = message;
+            
+            if(type === "warning") toastEl.className = "toast align-items-center text-white bg-danger border-0";
+            else toastEl.className = "toast align-items-center text-white bg-primary border-0";
+
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+
+        function setEstado(activo) {
+            const badge = document.getElementById('statusBadge');
+            const btnIniciar = document.getElementById('btnIniciar');
+            const btnDetener = document.getElementById('btnDetener');
+            const selectMoneda = document.getElementById('moneda');
+
+            if (activo) {
+                badge.className = "badge bg-success status-badge";
+                badge.innerHTML = '<i class="fas fa-sync fa-spin me-1"></i> Monitoreando';
+                btnIniciar.disabled = true;
+                btnDetener.disabled = false;
+                selectMoneda.disabled = true;
+            } else {
+                badge.className = "badge bg-secondary status-badge";
+                badge.innerHTML = '<i class="fas fa-stop-circle me-1"></i> Detenido';
+                btnIniciar.disabled = false;
+                btnDetener.disabled = true;
+                selectMoneda.disabled = false;
+            }
+        }
+
+        function iniciar() {
+            fetch('/api/control/iniciar', { method: 'POST' })
+                .then(() => {
+                    setEstado(true);
+                    log("Sistema iniciado correctamente.", "success");
+                })
+                .catch(err => log("Error al iniciar: " + err, "warning"));
+        }
+
+        function detener() {
+            fetch('/api/control/detener', { method: 'POST' })
+                .then(() => {
+                    setEstado(false);
+                    log("Sistema detenido por el usuario.", "warning");
+                });
+        }
+
+        function cambiarMoneda() {
+            const moneda = document.getElementById('moneda').value;
+            // Al cambiar moneda, asumimos que el backend detiene el sistema
+            fetch(`/api/control/moneda?moneda=${moneda}`, { method: 'POST' })
+                .then(res => res.text())
+                .then(msg => {
+                    log(msg, "info");
+                    setEstado(false); // Forzamos estado detenido en UI
+                    
+                    // Limpiar historial de gráficas para evitar mezcla de monedas
+                    Object.keys(historyData).forEach(key => delete historyData[key]);
+                    if (chartInstance) {
+                        chartInstance.data.labels = [];
+                        chartInstance.data.datasets[0].data = [];
+                        chartInstance.update();
+                    }
+
+                    // Limpiar tabla visualmente para evitar confusión de precios
+                    document.getElementById('tablaCuerpo').innerHTML = '';
+                    document.getElementById('emptyState').style.display = 'block';
+                });
+        }
+
+        // Conectar al cargar
+        connect();
+    </script>
+</body>
+</html>
